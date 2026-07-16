@@ -40,20 +40,16 @@ the details/instruction inside node_design.md or state_design.md.
 ↓
 
 ### 3. Selector Agent
-- Analyze all available cryptocurrencies from Bithumb.
-  (View transaction target list - market(string) attribute)
+- Retrieve initial Bithumb trading-pair names and store them in `trading_pairs`.
+- Use temporary Bithumb market metrics inside this node for deterministic scoring.
 - Select the **Top 20 candidate coins** with the highest potential for price appreciation.
-- No LLM involved at this node. It should be rule based and deterministic logic
+- No LLM involved at this node. It should be rule based and deterministic logic.
+- The raw market data used here is only for selection. The later Market Data branch remains the canonical source for `candle_data` and `transaction_data`.
 - Output:
   - `candidate_coins`
 ↓
 
-## 4. Candidate Coins
-- Pass the selected 20 coins into the parallel data collection workflow.
-
-↓
-
-## 5. Parallel Data Collection
+## 4. Parallel Data Collection
 
 ### Market Data
 - Retrieve market information from the **Bithumb API**.
@@ -69,7 +65,7 @@ Both branches execute **in parallel**.
 
 ↓
 
-## 6. Context Builder
+## 5. Context Builder
 - Wait until both parallel branches complete.
 - Merge:
   - Market data
@@ -78,7 +74,7 @@ Both branches execute **in parallel**.
 
 ↓
 
-## 7. Pre-Analysis Agent
+## 6. Pre-Analysis Agent
 - Lightweight model: GPT 5.5 mini (or a cheaper model that performs good at this degree)
 - Analyze the 20 candidate coins only by API results and the titles of web-scraping results(DuckDuckGo)
 to reduce the token usages and costs. (No full article content provided for analysis at this stage)
@@ -99,7 +95,7 @@ works as the comprehensive score for each coin at pre-analysis agent stage
 
 ↓
 
-## 8. Final Analysis Agent
+## 7. Final Analysis Agent
 - Serious model: GPT 5.5 
 - Perform a deeper analysis of the Top 5 coins.
 - Use:
@@ -111,7 +107,7 @@ works as the comprehensive score for each coin at pre-analysis agent stage
 
 ↓
 
-## 9. Ranker Agent
+## 8. Ranker Agent
 - Calculate the final investment score.
 - Rank all analyzed coins.
-- Return the final investment recommendations (as for a long-term investment) of top 3 coins based on the final analysis results.
+- Return the final investment recommendations (as for a long-term investment) of top 3 coins by slicing the ranked `final_report`.

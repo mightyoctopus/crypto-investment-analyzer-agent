@@ -14,99 +14,126 @@
 - Controls the execution sequence of all agents.
 
 ## Selector Agent
-Input: trading_pairs (all coins info from Bithumb API)
-Update: candidate_coins: list[str]
+Input: NONE
+Update:
+- trading_pairs: list[str]
+- candidate_coins: list[str]
 Output: candidate_coins: list[str]
-Select 20 coins with highest potential for price rise
-Request to Bithumb for market data(for receiving all coin names) and these data below 
-Trade_volume (daily/weekly/monthly candles)
-Highest_52_week_price
-Lowest_52_week_price
-Prev_closing_price (daily/weekly/monthly candles)
-high_price: 8679000 (daily/weekly/monthly candles)
-low_price: 8445000 (daily/weekly/monthly candles)
-Trade_price: (daily/weekly/monthly candles)
 
-- Check all available cryptocurrencies from Bithumb.
-  (View transaction target list - market(string) attribute)
+- Request Bithumb trading-pair names and store the initial target names in `trading_pairs`.
+- Use temporary Bithumb market metrics inside this node to score candidates:
+  - trade_volume from daily/weekly/monthly candles
+  - highest_52_week_price
+  - lowest_52_week_price
+  - previous_closing_price from daily/weekly/monthly candles
+  - high_price from daily/weekly/monthly candles
+  - low_price from daily/weekly/monthly candles
+  - trade_price from daily/weekly/monthly candles
 - Select the **Top 20 candidate coins** with the highest potential for price appreciation.
-- No LLM involved at this node. It should be rule based and deterministic logic for simply filtering out
-Candidate Coins Agent
-Input: candidate_coins: list[str]
-Update: just the same as the prev node (candidate_coins: list[str])
-Output: candidate_coins: list[str]
-
-- Pass the selected 20 coins into the parallel data collection workflow.
+- No LLM involved at this node. It should use rule-based and deterministic filtering logic.
+- The temporary market data used for selection is not written to `candle_data` or `transaction_data`; the Bithumb API branch remains the canonical market-data collection step.
+- Pass the selected 20 coins directly into the parallel data collection workflow.
 
 
 ## Parallel Data Collection
 ### Bithumb API 
 Input: candidate_coins
 Update: 
-daily_candle: list[dict[str: any]]
-weekly_candle: list[dict[str: any]]
-monthly_candle: list[dict[str: any]]
-transaction_data: list[dict[str, any]]
-is candle_data_good: bool (starting with “no”)
+- candle_data: dict[str, CandleBundle]
+- transaction_data: dict[str, TransactionData]
 Output: 
-daily_candle: list[dict[str: any]]
-weekly_candle: list[dict[str: any]]
-monthly_candle: list[dict[str: any]]
-transaction_data: list[dict[str, any]]
-is candle_data_good: bool (starting with “no”)
-Request data via Bithumb on the selected 20 coins for each. candles(daily, weekly, monthly), Transaction data are required.
+- candle_data: dict[str, CandleBundle]
+- transaction_data: dict[str, TransactionData]
+Request data via Bithumb on the selected 20 coins for each. Daily, weekly, monthly candles and transaction data are required.
 
 ### Validate Bithumb API
 Input: 
-daily_candle: list[dict[str: any]]
-weekly_candle: list[dict[str: any]]
-monthly_candle: list[dict[str: any]]
-transaction_data: list[dict[str, any]]
-is candle_data_good: bool (starting with “no”)
-Update: is candle_data_valid: yes or no depending on the result
+- candle_data: dict[str, CandleBundle]
+- transaction_data: dict[str, TransactionData]
+Update:
+- candle_validation: dict[str, ValidationResult]
+- failed_coins: list[str]
+- failures: list[CoinFailure]
 Action: If data valid, moves to the next node, otherwise go for re-trying
 These data from Bithumb API should be checked: 
-daily_candle: list[dict[str: any]]
-weekly_candle: list[dict[str: any]]
-monthly_candle: list[dict[str: any]]
-transaction_data: list[dict[str, any]]
+- candle_data daily/weekly/monthly candle completeness
+- transaction_data completeness
 Retry:
 If failed, then go to re-try (5 times re-try limit and if reaching the limit, then emit the corresponding coin)
 
-As the result, is candle_data_good: bool value is assigned
+As the result, `candle_validation` is assigned per coin.
 
 ### DuckDuckGo Web Search
 Input: candidate_coins
 Action: web search and web scraping using DuckDuckGo search method in langchain
-Update: articles: list[dict[str, dict[str, str]]]
+Update: articles: dict[str, list[Article]]
 Output: 
-articles: list[dict[str, dict[str, str]]]
+articles: dict[str, list[Article]]
 
 ### Validate News
-Input: articles: list[dict[str, dict[str, str]]]
+Input: articles: dict[str, list[Article]]
 Update: 
-num_articles: int
-are_articles_valid: bool
+- news_validation: dict[str, ValidationResult]
+- failed_coins: list[str]
+- failures: list[CoinFailure]
 Action: If data (collected articles) valid, moves to the next node, otherwise go for re-trying. It should check the number of articles per coin (at least 5 articles) and if it’s a valid structure without omission (title, content)
 
 
 These things should be checked: 
 (Otherwise failed and go through re-tries)
-at least 5 articles per coin (out of 20 different coins)
-Published within 7 days 
-reputable sources (Hard code the names of reputable coin news or mainstream news of around 30 or higher?)
-scraping successful
-If data structure has omission
-Loop limit 2 times
+- at least 5 articles per coin (out of 20 different coins)
+- Published within 7 days 
+- reputable sources (Hard code the names of reputable coin news or mainstream news of around 30 or higher?)
+- scraping successful
+- If data structure has omission
+- Loop limit 2 times
+
+Reputable source allowlist for news validation:
+TRUSTED_NEWS_SOURCES = [
+   
+    "coindesk.com",
+    "theblock.co",
+    "decrypt.co",
+    "blockworks.co",
+    "cointelegraph.com",
+    "cryptoslate.com",
+    "cryptobriefing.com",
+    "bitcoinmagazine.com",
+    "coinmarketcap.com",
+    "coinpedia.org",
+    "messari.io",
+    "glassnode.com",
+    "chainalysis.com",
+    "trmlabs.com",
+    "elliptic.co",
+    "kaiko.com",
+    "ccdata.io",
+    "coinmetrics.io",
+    "reuters.com",
+    "apnews.com",
+    "bloomberg.com",
+    "ft.com",
+    "wsj.com",
+    "barrons.com",
+    "cnbc.com",
+    "fortune.com",
+    "forbes.com",
+    "nasdaq.com",
+    "marketwatch.com",
+    "investing.com",
+    "yahoo.com",
+    "fxstreet.com",
+    "stocktwits.com",
+]
 
 Retry:
 If failed, then go to re-try (2 times re-try limit and if reaching the limit, then emit the corresponding coin)
-As the result, are_articles_valid: bool value is assigned
+As the result, `news_validation` is assigned per coin.
 
 
 ## Context Builder
 Input: Bithumb API data, News data (duckduckgo) 
-Update: merged_coin_data: list[str, dict[str, any] 
+Update: merged_coin_data: dict[str, CoinContext]
 Output: merged_coin_data
 
 should wait until the parallel process is complete (both done) and merge them
@@ -138,10 +165,10 @@ LLM Analysis (gpt 5.5) - higher performant model
 
 ## Ranker_agent
 Input: final_report: list[FinalAnalysisResult]
-Output: top_3
+Output: top_3 extracted from final_report
 
 Sort data by ranking 
-Return the top 3 coins based on the final_score attribute
+Return the top 3 coins based on the final_score attribute without storing a separate duplicated state field
 
 
 ranked = sorted(

@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 from datetime import datetime
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, TypeVar, TypedDict
+
+
+T = TypeVar("T")
 
 
 ## Reducers for parallel LangGraph updates
@@ -27,6 +30,19 @@ def merge_dicts(
     return {**current, **incoming}
 
 
+def merge_list_dicts(
+    current: dict[str, list[T]],
+    incoming: dict[str, list[T]],
+) -> dict[str, list[T]]:
+    """
+    Merge dictionary updates whose values are lists.
+    """
+    merged = {**current}
+    for key, values in incoming.items():
+        merged[key] = merged.get(key, []) + values
+    return merged
+
+
 def append_unique_strings(
     current: list[str],
     incoming: list[str],
@@ -37,6 +53,16 @@ def append_unique_strings(
     return list(dict.fromkeys(current + incoming))
 
 
+def append_reducer(
+    current: list[T],
+    incoming: list[T],
+) -> list[T]:
+    """
+    Append list updates produced by parallel LangGraph branches.
+    """
+    return current + incoming
+
+
 
 ## Basic domain types
 
@@ -44,13 +70,11 @@ class Candle(TypedDict):
     symbol: str
     market: str
     candle_date_time_kst: str
-
     opening_price: float
     high_price: float
     low_price: float
     trade_price: float
     previous_closing_price: float
-
     change_rate: float
     trade_volume: float
 
@@ -67,10 +91,8 @@ class CandleBundle(TypedDict):
 class TransactionData(TypedDict):
     symbol: str
     market: str
-
     highest_52_week_price: float
     lowest_52_week_price: float
-
     trade_price: float
     accumulated_trade_volume_24h: float
     accumulated_trade_price_24h: float
@@ -100,7 +122,6 @@ class ValidationResult(TypedDict):
     is_valid: bool
     status: ValidationState
     retry_count: int
-
     reason: str | None
     checked_at: str | None
 
@@ -128,7 +149,6 @@ class CoinContext(TypedDict):
     """
     symbol: str
     market: str
-
     candles: CandleBundle
     transaction: TransactionData
     articles: list[Article]
@@ -138,14 +158,12 @@ class CoinContext(TypedDict):
 
 class PreAnalysisResult(TypedDict):
     symbol: str
-
     bullish_score: float
     risk_score: float
     news_sentiment: float
     technical_strength: float
     potential_score: float
     confidence: float
-
     summary: str
     pre_anal_score: float
 
@@ -173,24 +191,17 @@ Trend = Literal[
 
 class FinalAnalysisResult(TypedDict):
     symbol: str
-
     long_term_potential: float
     confidence: float
     trend: Trend
-
     news_sentiment: float
     technical_strength: float
     risk_level: float
-
     summary: str
     reasons: list[str]
     risks: list[str]
-
     recommendation: Recommendation
-
-    # Initially optional conceptually.
-    # The Ranker node calculates and adds this value.
-    final_score: float | None
+    final_score: float
 
 
 ## Main LangGraph shared state
@@ -201,7 +212,6 @@ class CryptoAnalysisState(TypedDict):
     # --------------------------------------------------------
 
     trading_pairs: list[str]
-
     candidate_coins: list[str]
 
     # --------------------------------------------------------
@@ -232,7 +242,7 @@ class CryptoAnalysisState(TypedDict):
 
     articles: Annotated[
         dict[str, list[Article]],
-        merge_dicts,
+        merge_list_dicts,
     ]
 
     # Example:
@@ -267,7 +277,10 @@ class CryptoAnalysisState(TypedDict):
         append_unique_strings,
     ]
 
-    failures: list[CoinFailure]
+    failures: Annotated[
+        list[CoinFailure],
+        append_reducer,
+    ]
 
     # --------------------------------------------------------
     # Merged per-coin context
@@ -295,7 +308,7 @@ class CryptoAnalysisState(TypedDict):
 
     pre_analysis_results: dict[str, PreAnalysisResult]
 
-    top_5_coins: list[pre_analysis_results["pre_anal_score"][:3]]
+    top_5_coins: list[str]
 
     # Example:
     # [
@@ -309,9 +322,7 @@ class CryptoAnalysisState(TypedDict):
     # Final analysis and ranking
     # --------------------------------------------------------
 
-    final_results: list[FinalAnalysisResult]
-
-    top_3_results: list[FinalAnalysisResult]
+    final_report: list[FinalAnalysisResult]
 
     # --------------------------------------------------------
     # Overall graph status
