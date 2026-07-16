@@ -1,0 +1,1 @@
+"""Ranker Agent node placeholder."""
